@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>chat.session — AI Chat</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --ink: #12161C;
+    --paper: #E8E6E0;
+    --signal: #5FB3A3;
+    --flag: #D98E4A;
+    --line: #262D36;
+    --muted: #7A8290;
+    --panel: #171D25;
+    --error: #E5484D;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity: 0.06;
+    pointer-events: none;
+  }
+
+  .terminal {
+    width: 100%;
+    max-width: 720px;
+    height: min(85vh, 700px);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    position: relative;
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+
+  .filename { margin-left: 8px; font-size: 13px; color: var(--muted); }
+
+  .status {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .status-dot.on { background: var(--signal); }
+
+  .keybar {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    border-bottom: 1px solid var(--line);
+  }
+  .keybar-row { display: flex; gap: 8px; }
+  .keybar-row select, .keybar-row input {
+    background: var(--ink);
+    border: 1px solid var(--line);
+    color: var(--paper);
+    padding: 9px 10px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+  }
+  .keybar-row select { flex: 0 0 160px; }
+  .keybar-row input { flex: 1; min-width: 0; }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .hint a { color: var(--signal); }
+
+  .log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .entry { display: flex; flex-direction: column; gap: 4px; }
+
+  .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .meta .who { color: var(--signal); font-weight: 600; }
+  .entry.gemini .meta .who { color: var(--flag); }
+
+  .bubble {
+    padding-left: 14px;
+    border-left: 2px solid var(--line);
+    font-size: 14.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .entry.you .bubble { border-left-color: var(--signal); }
+  .entry.gemini .bubble { border-left-color: var(--flag); }
+
+  .cursor {
+    display: inline-block;
+    width: 7px; height: 14px;
+    background: var(--flag);
+    animation: blink 1s step-start infinite;
+    vertical-align: text-bottom;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; opacity: 0.6; }
+  }
+
+  .inputbar {
+    border-top: 1px solid var(--line);
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .prompt-char { color: var(--signal); font-weight: 600; }
+
+  #msgInput {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--paper);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  #msgInput::placeholder { color: var(--muted); }
+  #msgInput:disabled { color: var(--muted); }
+
+  button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: var(--signal);
+    color: var(--ink);
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { opacity: 0.85; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--flag);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+  @media (max-width: 480px) {
+    body { padding: 0; }
+    .terminal { height: 100vh; max-width: 100%; border-radius: 0; border: none; }
+    .keybar-row { flex-direction: column; }
+    .keybar-row select { flex: 1; }
+  }
+</style>
+</head>
+<body>
+  <div class="terminal">
+    <div class="titlebar">
+      <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <span class="filename">chat.session.log</span>
+      <span class="status"><span class="status-dot" id="statusDot"></span><span id="statusText">no key set</span></span>
+    </div>
+
+    <div class="keybar">
+      <div class="keybar-row">
+        	<select id="modelSelect">
+  <option value="gemini-3.5-flash">gemini — flash (new)</option>
+  <option value="gemini-3.1-pro">gemini — pro (new)</option>
+</select>
+        <input type="password" id="apiKeyInput" placeholder="AIzaSy... (your Gemini API key)" autocomplete="off" />
+      </div>
+      <div class="hint">Key stays in this browser tab only — never saved, never sent anywhere but Google APIs. Get one at <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a>.</div>
+    </div>
+
+    <div class="log" id="log">
+      <div class="entry gemini">
+        <div class="meta"><span class="who">gemini</span><span>system</span></div>
+        <div class="bubble">Paste your Google Gemini API key above, then say hello.</div>
+      </div>
+    </div>
+
+    <div class="inputbar">
+      <span class="prompt-char">&gt;</span>
+      <input type="text" id="msgInput" placeholder="type a message..." disabled />
+      <button id="sendBtn" disabled>send</button>
+    </div>
+  </div>
+
+<script>
+  const log = document.getElementById('log');
+  const msgInput = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const modelSelect = document.getElementById('modelSelect');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+
+  let apiKey = '';
+  let history = [];
+
+  function updateStatus() {
+    apiKey = apiKeyInput.value.trim();
+    const ready = apiKey.length > 0;
+    msgInput.disabled = !ready;
+    sendBtn.disabled = !ready;
+    statusDot.classList.toggle('on', ready);
+    statusText.textContent = ready ? 'ready' : 'no key set';
+  }
+  apiKeyInput.addEventListener('input', updateStatus);
+
+  function timestamp() {
+    const d = new Date();
+    return d.toTimeString().slice(0,5);
+  }
+
+  function addEntry(who, text) {
+    const div = document.createElement('div');
+    div.className = 'entry ' + (who === 'you' ? 'you' : 'gemini');
+    div.innerHTML = '<div class="meta"><span class="who">' + who + '</span><span>' + timestamp() + '</span></div><div class="bubble"></div>';
+    div.querySelector('.bubble').textContent = text;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  async function send() {
+    const text = msgInput.value.trim();
+    if (!text || !apiKey) return;
+    msgInput.value = '';
+    addEntry('you', text);
+    
+    // Maintain flat standard history locally
+    history.push({ role: 'user', content: text });
+
+    sendBtn.disabled = true;
+    const pending = addEntry('gemini', '');
+    pending.querySelector('.bubble').innerHTML = '<span class="cursor"></span>';
+
+    try {
+      // Format structural message blocks to meet Gemini API schema rules
+      const geminiContents = history.map(msg => ({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      }));
+
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelSelect.value}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: geminiContents
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error((data && data.error && data.error.message) || ('request failed: ' + res.status));
+      }
+
+      // Safeguard extraction parameters out of nested API node values
+      const reply = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
+        ? data.candidates[0].content.parts[0].text 
+        : '(empty response)';
+
+      pending.querySelector('.bubble').textContent = reply;
+      history.push({ role: 'assistant', content: reply });
+    } catch (err) {
+      pending.querySelector('.bubble').textContent = 'error: ' + err.message;
+      pending.querySelector('.bubble').style.color = 'var(--error)';
+    } finally {
+      sendBtn.disabled = false;
+      msgInput.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  msgInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') send(); });
+</script>
+</body>
+</html>
